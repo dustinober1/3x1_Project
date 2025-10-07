@@ -1,7 +1,7 @@
 """
-Collatz Conjecture Random Large Number Tester - SQLITE VERSION
+Collatz Conjecture Random Large Number Tester - PERSISTENT VERSION
 Tests random numbers over 10 billion against the 3x+1 problem
-Uses efficient SQLite database with SHA-256 hashes for compact storage
+Maintains a permanent log file to prevent retesting across multiple runs
 
 Perfect for school projects and long-term research!
 """
@@ -10,91 +10,51 @@ import random
 import time
 import json
 import os
-import sqlite3
-import hashlib
 from datetime import datetime
 
 
 # Configuration
-DB_FILE = 'collatz_tested.db'
+LOG_FILE = 'collatz_tested_numbers.json'
 RESULTS_LOG = 'collatz_results_log.txt'
 
 
-def hash_number(n: int) -> bytes:
-    """Generate a compact SHA-256 hash of a number for storage."""
-    return hashlib.sha256(str(n).encode('utf-8')).digest()
+def load_tested_numbers():
+    """
+    Load previously tested numbers from the log file.
+    Returns: set of tested numbers
+    """
+    if os.path.exists(LOG_FILE):
+        try:
+            with open(LOG_FILE, 'r') as f:
+                data = json.load(f)
+                tested = set(data.get('tested_numbers', []))
+                print(f"✓ Loaded {len(tested):,} previously tested numbers from log file")
+                return tested, data.get('all_time_stats', {})
+        except Exception as e:
+            print(f"⚠️  Error loading log file: {e}")
+            print("   Starting fresh...")
+            return set(), {}
+    else:
+        print("📝 No previous log file found. Starting fresh!")
+        return set(), {}
 
 
-def init_db(db_path=DB_FILE):
-    """Initialize the SQLite database with optimized settings."""
-    conn = sqlite3.connect(db_path, timeout=30)
-    conn.execute('PRAGMA journal_mode=WAL;')  # Better concurrency
-    conn.execute('PRAGMA synchronous=NORMAL;')  # Good speed/safety tradeoff
-    conn.execute('PRAGMA cache_size=-64000;')  # 64MB cache
-    
-    # Create tables
-    conn.execute('''CREATE TABLE IF NOT EXISTS tested (
-        hash BLOB PRIMARY KEY
-    ) WITHOUT ROWID''')
-    
-    conn.execute('''CREATE TABLE IF NOT EXISTS stats (
-        key TEXT PRIMARY KEY,
-        value TEXT
-    ) WITHOUT ROWID''')
-    
-    conn.commit()
-    return conn
-
-
-def load_all_time_stats(conn):
-    """Load all-time statistics from the database."""
+def save_tested_numbers(tested_numbers, all_time_stats):
+    """
+    Save tested numbers to the log file.
+    """
     try:
-        cursor = conn.execute('SELECT value FROM stats WHERE key = ?', ('all_time_stats',))
-        row = cursor.fetchone()
-        if row:
-            return json.loads(row[0])
+        data = {
+            'tested_numbers': list(tested_numbers),
+            'total_tested': len(tested_numbers),
+            'last_updated': datetime.now().isoformat(),
+            'all_time_stats': all_time_stats
+        }
+        with open(LOG_FILE, 'w') as f:
+            json.dump(data, f)
+        print(f"✓ Saved {len(tested_numbers):,} tested numbers to log file")
     except Exception as e:
-        print(f"⚠️  Error loading stats: {e}")
-    
-    return {
-        'longest_sequence': 0,
-        'longest_num': 0,
-        'highest_peak': 0,
-        'highest_peak_num': 0,
-        'total_steps': 0,
-        'total_numbers': 0
-    }
-
-
-def save_all_time_stats(conn, all_time_stats):
-    """Save all-time statistics to the database."""
-    try:
-        conn.execute(
-            'INSERT OR REPLACE INTO stats (key, value) VALUES (?, ?)',
-            ('all_time_stats', json.dumps(all_time_stats))
-        )
-        conn.commit()
-    except Exception as e:
-        print(f"⚠️  Error saving stats: {e}")
-
-
-def get_tested_count(conn):
-    """Get the total number of tested entries in the database."""
-    cursor = conn.execute('SELECT COUNT(*) FROM tested')
-    return cursor.fetchone()[0]
-
-
-def has_been_tested(conn, n: int) -> bool:
-    """Check if a number has already been tested."""
-    h = hash_number(n)
-    cursor = conn.execute('SELECT 1 FROM tested WHERE hash = ?', (h,))
-    return cursor.fetchone() is not None
-
-
-def mark_tested_batch(conn, numbers):
-    """Mark multiple numbers as tested in a single transaction."""
-    hashes = [(hash_number(n),) for n in numbers]
-    conn.executemany('INSERT OR IGNORE INTO tested (hash) VALUES (?)', hashes)
+        print(f"⚠️  Error saving log file: {e}")
 
 
 def append_to_results_log(session_info):
@@ -146,7 +106,7 @@ def collatz_steps(n):
 
 
 def test_random_large_numbers(num_tests=100_000_000, min_value=10_000_000_000,
-                               max_value=1_000_000_000_000_000_000_000_000_000, conn=None):
+                               max_value=1_000_000_000_000_000_000_000_000_000):
     """
     Test random numbers >= min_value.
     Loads previous tests and avoids duplicates across all runs.
@@ -155,20 +115,20 @@ def test_random_large_numbers(num_tests=100_000_000, min_value=10_000_000_000,
     print(f"Range: {min_value:,} to {max_value:,}")
     print("=" * 70)
     
-    # Initialize database connection if not provided
-    close_conn = False
-    if conn is None:
-        conn = init_db()
-        close_conn = True
+    # Load previously tested numbers
+    tested_numbers, all_time_stats = load_tested_numbers()
+    initial_count = len(tested_numbers)
     
-    # Load previously tested count and stats
-    initial_count = get_tested_count(conn)
-    print(f"✓ Database contains {initial_count:,} previously tested numbers")
-    
-    all_time_stats = load_all_time_stats(conn)
-    
-    # Session-only cache to avoid DB lookups for numbers tested this session
-    session_tested = set()
+    # Initialize all-time stats if empty
+    if not all_time_stats:
+        all_time_stats = {
+            'longest_sequence': 0,
+            'longest_num': 0,
+            'highest_peak': 0,
+            'highest_peak_num': 0,
+            'total_steps': 0,
+            'total_numbers': 0
+        }
     
     # Current session statistics
     all_reach_one = True
@@ -200,21 +160,18 @@ def test_random_large_numbers(num_tests=100_000_000, min_value=10_000_000_000,
     attempts = 0
     duplicates_skipped = 0
     max_attempts = num_tests * 100  # Safety limit
-    batch_to_save = []  # Batch inserts for performance
-    batch_size = 1000
     
     while test_count < num_tests and attempts < max_attempts:
         # Generate random number
         num = random.randint(min_value, max_value)
         attempts += 1
         
-        # Skip if already tested (check session cache first, then DB)
-        if num in session_tested or has_been_tested(conn, num):
+        # Skip if already tested (even from previous runs!)
+        if num in tested_numbers:
             duplicates_skipped += 1
             continue
         
-        session_tested.add(num)
-        batch_to_save.append(num)
+        tested_numbers.add(num)
         test_count += 1
         
         # Test this number
@@ -251,31 +208,19 @@ def test_random_large_numbers(num_tests=100_000_000, min_value=10_000_000_000,
         session_top_10_highest.sort(reverse=True)
         session_top_10_highest = session_top_10_highest[:10]
         
-        # Progress indicator and periodic batch save
+        # Progress indicator
         if test_count % checkpoint == 0:
             progress = (test_count / num_tests) * 100
             elapsed = time.time() - start_time
             rate = test_count / elapsed if elapsed > 0 else 0
             print(f"Progress: {progress:5.1f}% | {test_count:,} new | "
                   f"{duplicates_skipped:,} dups skipped | {rate:.0f} tests/sec")
-            
-            # Save batch to DB
-            if batch_to_save:
-                mark_tested_batch(conn, batch_to_save)
-                conn.commit()
-                batch_to_save = []
     
     end_time = time.time()
     elapsed = end_time - start_time
     
-    # Save any remaining batch and stats
-    if batch_to_save:
-        mark_tested_batch(conn, batch_to_save)
-    save_all_time_stats(conn, all_time_stats)
-    conn.commit()
-    
-    final_count = get_tested_count(conn)
-    print(f"✓ Database now contains {final_count:,} tested numbers")
+    # Save the updated tested numbers
+    save_tested_numbers(tested_numbers, all_time_stats)
     
     # Final results
     print(f"\n{'='*70}")
@@ -292,7 +237,7 @@ def test_random_large_numbers(num_tests=100_000_000, min_value=10_000_000_000,
     print(f"   Testing rate: {test_count / elapsed:.0f} numbers/second")
     
     print(f"\n📚 ALL-TIME TOTALS:")
-    print(f"   Total unique numbers ever tested: {final_count:,}")
+    print(f"   Total unique numbers ever tested: {len(tested_numbers):,}")
     print(f"   Numbers tested before this session: {initial_count:,}")
     print(f"   All-time average steps: {all_time_stats['total_steps'] / all_time_stats['total_numbers']:.2f}")
     
@@ -319,7 +264,7 @@ def test_random_large_numbers(num_tests=100_000_000, min_value=10_000_000_000,
     session_info = {
         'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'tested_this_session': test_count,
-        'total_unique': final_count,
+        'total_unique': len(tested_numbers),
         'longest_sequence': longest_sequence,
         'longest_num': longest_sequence_num,
         'highest_peak': highest_peak,
@@ -328,13 +273,9 @@ def test_random_large_numbers(num_tests=100_000_000, min_value=10_000_000_000,
     }
     append_to_results_log(session_info)
     
-    # Close connection if we opened it
-    if close_conn:
-        conn.close()
-    
     return {
         'session_tested': test_count,
-        'total_unique': final_count,
+        'total_unique': len(tested_numbers),
         'duplicates_skipped': duplicates_skipped,
         'all_time_stats': all_time_stats
     }
@@ -346,12 +287,9 @@ if __name__ == "__main__":
     print("School Project Edition - Remembers All Previous Tests!")
     print("="*70)
     
-    print("\n📁 Storage:")
-    print(f"   Numbers database: {DB_FILE} (SQLite with SHA-256 hashes)")
+    print("\n📁 Log files:")
+    print(f"   Numbers database: {LOG_FILE}")
     print(f"   Results history: {RESULTS_LOG}")
-    
-    # Initialize database
-    conn = init_db()
     
     # Use a fixed number of tests (non-interactive)
     print("\n" + "="*70)
@@ -362,12 +300,8 @@ if __name__ == "__main__":
     results = test_random_large_numbers(
         num_tests=num_tests,
         min_value=10_000_000_000,      
-        max_value=1_000_000_000_000_000_000_000_000_000_000,
-        conn=conn
+        max_value=1_000_000_000_000_000_000_000_000_000_000    
     )
-    
-    # Close database
-    conn.close()
     
     print("\n" + "="*70)
     print("🎯 CONCLUSION:")
@@ -378,4 +312,4 @@ if __name__ == "__main__":
     print("="*70 + "\n")
     
     print("💡 TIP: Run this program again anytime to test more numbers!")
-    print("    The database remembers everything! 🎓\n")
+    print("    The log file remembers everything! 🎓\n")
