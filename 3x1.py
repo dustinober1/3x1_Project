@@ -34,15 +34,35 @@ def init_db(db_path=DB_FILE):
             test_conn = sqlite3.connect(db_path, timeout=5)
             test_conn.execute("PRAGMA integrity_check;")
             test_conn.close()
-        except sqlite3.DatabaseError as e:
+        except (sqlite3.DatabaseError, sqlite3.OperationalError) as e:
             print(f"⚠️  Database file is corrupt or invalid: {e}")
             print(f"   Removing and recreating {db_path}...")
+            try:
+                test_conn.close()
+            except:
+                pass
             os.remove(db_path)
     
-    conn = sqlite3.connect(db_path, timeout=30)
-    conn.execute('PRAGMA journal_mode=WAL;')  # Better concurrency
-    conn.execute('PRAGMA synchronous=NORMAL;')  # Good speed/safety tradeoff
-    conn.execute('PRAGMA cache_size=-64000;')  # 64MB cache
+    try:
+        conn = sqlite3.connect(db_path, timeout=30)
+        conn.execute('PRAGMA journal_mode=WAL;')  # Better concurrency
+        conn.execute('PRAGMA synchronous=NORMAL;')  # Good speed/safety tradeoff
+        conn.execute('PRAGMA cache_size=-64000;')  # 64MB cache
+    except (sqlite3.DatabaseError, sqlite3.OperationalError) as e:
+        # If we still get an error, the file is definitely corrupt
+        print(f"⚠️  Database file is corrupt (error on PRAGMA): {e}")
+        print(f"   Removing and recreating {db_path}...")
+        try:
+            conn.close()
+        except:
+            pass
+        if os.path.exists(db_path):
+            os.remove(db_path)
+        # Recreate from scratch
+        conn = sqlite3.connect(db_path, timeout=30)
+        conn.execute('PRAGMA journal_mode=WAL;')
+        conn.execute('PRAGMA synchronous=NORMAL;')
+        conn.execute('PRAGMA cache_size=-64000;')
     
     # Create tables
     conn.execute('''CREATE TABLE IF NOT EXISTS tested (
