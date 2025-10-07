@@ -18,6 +18,7 @@ jobs:
         with:
           # allow committing back with the provided token
           persist-credentials: true
+          lfs: true
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -40,7 +41,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # Only add known output files to avoid accidentally committing unrelated changes
           if git status --porcelain | grep -q '.'; then
-            git add collatz_tested_numbers.json collatz_results_log.txt || true
+            git add collatz_tested.db collatz_tested_numbers.json collatz_results_log.txt || true
             if git diff --staged --quiet; then
               echo "No tracked changes to commit"
             else

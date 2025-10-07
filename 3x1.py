@@ -27,6 +27,18 @@ def hash_number(n: int) -> bytes:
 
 def init_db(db_path=DB_FILE):
     """Initialize the SQLite database with optimized settings."""
+    # Check if file exists and is a valid SQLite database
+    if os.path.exists(db_path):
+        try:
+            # Try to connect and verify it's a valid database
+            test_conn = sqlite3.connect(db_path, timeout=5)
+            test_conn.execute("PRAGMA integrity_check;")
+            test_conn.close()
+        except sqlite3.DatabaseError as e:
+            print(f"⚠️  Database file is corrupt or invalid: {e}")
+            print(f"   Removing and recreating {db_path}...")
+            os.remove(db_path)
+    
     conn = sqlite3.connect(db_path, timeout=30)
     conn.execute('PRAGMA journal_mode=WAL;')  # Better concurrency
     conn.execute('PRAGMA synchronous=NORMAL;')  # Good speed/safety tradeoff
