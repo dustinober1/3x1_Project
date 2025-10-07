@@ -9,6 +9,8 @@ on:
 jobs:
   run-collatz:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Allow pushing commits back to the repository
     concurrency:
       group: collatz-schedule
       cancel-in-progress: true
