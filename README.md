@@ -1,4 +1,3 @@
-```markdown
 # 3x1_Project
 
 This project is a persistent random-tester for the Collatz (3x+1) conjecture. It generates very large random starting numbers, runs each through the Collatz sequence until they reach 1 (or a safety limit), and keeps a persistent log so numbers aren't re-tested across runs.
