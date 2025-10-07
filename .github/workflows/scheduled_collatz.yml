@@ -20,6 +20,22 @@ jobs:
           persist-credentials: true
           lfs: true
 
+      - name: Verify LFS files
+        run: |
+          # Verify that LFS files were properly checked out
+          git lfs ls-files
+          if [ -f "collatz_tested.db" ]; then
+            file collatz_tested.db
+            # Check if it's an LFS pointer or actual file
+            if head -1 collatz_tested.db | grep -q "version https://git-lfs"; then
+              echo "ERROR: collatz_tested.db is still an LFS pointer!"
+              git lfs pull
+              file collatz_tested.db
+            else
+              echo "✓ collatz_tested.db is a proper binary file"
+            fi
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
