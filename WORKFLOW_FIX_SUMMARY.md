@@ -23,7 +23,24 @@ The `collatz_tested.db` file is stored in **Git LFS** (Large File Storage), but 
     lfs: true  # ← Added this
 ```
 
-### 2. Add LFS Verification Step
+### 2. Add Write Permissions to Workflow
+**File**: `.github/workflows/scheduled_collatz.yml`
+
+**Change**: Added `contents: write` permission to allow pushing commits
+```yaml
+jobs:
+  run-collatz:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # ← Added this - allows github-actions[bot] to push
+```
+
+### 3. Add LFS Verification Step
+**File**: `.github/workflows/scheduled_collatz.yml`
+
+**Change**: Added a verification step to ensure LFS files are properly fetched
+```yaml
+### 3. Add LFS Verification Step
 **File**: `.github/workflows/scheduled_collatz.yml`
 
 **Change**: Added a verification step to ensure LFS files are properly fetched
@@ -43,7 +60,10 @@ The `collatz_tested.db` file is stored in **Git LFS** (Large File Storage), but 
     fi
 ```
 
-### 3. Robust Database Corruption Recovery
+### 4. Robust Database Corruption Recovery
+```
+
+### 4. Robust Database Corruption Recovery
 **File**: `3x1.py`
 
 **Change**: Enhanced `init_db()` function to detect and recover from corrupted databases
@@ -83,7 +103,7 @@ def init_db(db_path=DB_FILE):
     # ... rest of function
 ```
 
-### 4. Include Database in Commit Step
+### 5. Include Database in Commit Step
 **File**: `.github/workflows/scheduled_collatz.yml`
 
 **Change**: Added `collatz_tested.db` to files committed back
@@ -102,6 +122,7 @@ The fixes handle multiple failure scenarios:
 - `9391ce0` - Enable Git LFS in workflow and add database corruption recovery
 - `f4dac67` - Improve database corruption recovery to handle PRAGMA errors
 - `a45cd1b` - Add LFS verification step to workflow
+- `33a0ca0` - Add contents:write permission to workflow for pushing results
 
 ## Next Steps
 1. The workflow should now run successfully
