@@ -1,0 +1,52 @@
+name: Scheduled Collatz Tests
+
+on:
+  schedule:
+    # Run at minute 0 every 4th hour
+    - cron: '0 */4 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  run-collatz:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: collatz-schedule
+      cancel-in-progress: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # allow committing back with the provided token
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # Add dependency installs here if your script needs external packages
+
+      - name: Run collatz script
+        run: |
+          # Run the project script. It runs non-interactively by default.
+          python3 3x1.py
+
+      - name: Commit results if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Only add known output files to avoid accidentally committing unrelated changes
+          if git status --porcelain | grep -q '.'; then
+            git add collatz_tested_numbers.json collatz_results_log.txt || true
+            if git diff --staged --quiet; then
+              echo "No tracked changes to commit"
+            else
+              git commit -m "chore: update collatz database and results (scheduled run)" || true
+              git push
+            fi
+          else
+            echo "No changes detected"
+          fi
