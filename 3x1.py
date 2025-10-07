@@ -291,19 +291,16 @@ if __name__ == "__main__":
     print(f"   Numbers database: {LOG_FILE}")
     print(f"   Results history: {RESULTS_LOG}")
     
-    # Get user input for how many numbers to test
+    # Use a fixed number of tests (non-interactive)
     print("\n" + "="*70)
-    try:
-        num_tests = int(input("How many NEW numbers to test this session? (default 10000): ") or "10000")
-    except ValueError:
-        num_tests = 1000000
-        print(f"Using default: {num_tests:,}")
+    num_tests = 1_000_000
+    print(f"Automatically testing {num_tests:,} new numbers this session (no prompt).")
     
     # Test random large numbers
     results = test_random_large_numbers(
         num_tests=num_tests,
-        min_value=10_000_000_000,      # 10 billion
-        max_value=1_000_000_000_000_000_000_000_000_000_000    # 1 trillion
+        min_value=10_000_000_000,      
+        max_value=1_000_000_000_000_000_000_000_000_000_000    
     )
     
     print("\n" + "="*70)
